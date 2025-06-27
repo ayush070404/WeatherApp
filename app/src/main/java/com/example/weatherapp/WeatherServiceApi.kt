@@ -14,4 +14,12 @@ interface WeatherServiceApi {
         @Query("appid") appId: String,
         @Query("units") metric: String
     ): Call<WeatherResponse>
+
+    // 🔍 Weather by city name (for search bar)
+    @GET("2.5/weather")
+    fun getWeatherByCity(
+        @Query("q") cityName: String,
+        @Query("appid") appId: String,
+        @Query("units") metric: String
+    ): Call<WeatherResponse>
 }

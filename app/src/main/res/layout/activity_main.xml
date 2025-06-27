@@ -13,15 +13,30 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:visibility="visible">
+        <SearchView
+            android:id="@+id/search_bar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_alignParentTop="true"
+            android:layout_marginTop="10dp"
+            android:layout_marginBottom="15dp"
+            android:iconifiedByDefault="false"
+            android:queryHint="Search city..."
+            android:background="@drawable/search_bg"
+            android:layout_centerHorizontal="true" />
+
 
         <LinearLayout
             android:id="@+id/addressContainer"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_below="@id/search_bar"
+            android:layout_marginTop="20dp"
             android:gravity="center"
             android:orientation="vertical">
 
-            <TextView
+
+        <TextView
                 android:id="@+id/text_view_address"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"

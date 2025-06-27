@@ -1,80 +1,125 @@
 package com.example.weatherapp
 
-
 import android.annotation.SuppressLint
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.location.LocationManager
-import android.location.LocationRequest
 import android.net.Uri
-import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.os.Looper
 import android.provider.Settings
-import android.util.Log
+import android.widget.SearchView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
-import com.example.weatherapp.models.Weather
 import com.example.weatherapp.models.WeatherResponse
 import com.example.weatherapp.utils.Constants
 import com.google.android.gms.location.*
-import retrofit2.Call
-import retrofit2.Callback
-import retrofit2.Response
-import retrofit2.Retrofit
+import retrofit2.*
 import retrofit2.converter.gson.GsonConverterFactory
-import java.text.DateFormat
 import java.text.SimpleDateFormat
 import java.util.*
-
 
 class MainActivity : AppCompatActivity() {
     private val REQUEST_LOCATION_CODE = 123123
     private lateinit var mFusedLocationClient: FusedLocationProviderClient
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
         mFusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
+
+        // 🌆 Load Delhi by default on launch
+        fetchWeatherByCity("Delhi")
+
+        // 🔐 Location permission check
         if (!isLocationEnabled()) {
-
-            Toast.makeText(this@MainActivity, "The location is not enabled", Toast.LENGTH_LONG)
-                .show()
-
+            Toast.makeText(this@MainActivity, "The location is not enabled", Toast.LENGTH_LONG).show()
             val intent = Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)
             startActivity(intent)
         } else {
             requestPermissions()
         }
 
+        // 🔍 Set up search bar
+        setupSearchView()
     }
 
 
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<out String>,
-        grantResults: IntArray
-    ) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == REQUEST_LOCATION_CODE && grantResults.size > 0) {
-            Toast.makeText(this, "Permission granted", Toast.LENGTH_SHORT).show()
-            requestLocationData()
+    private fun setupSearchView() {
+        val searchView = findViewById<SearchView>(R.id.search_bar)
+        searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
+            override fun onQueryTextSubmit(query: String?): Boolean {
+                if (!query.isNullOrEmpty()) {
+                    fetchWeatherByCity(query.trim())
+                    searchView.clearFocus()
+                }
+                return true
+            }
+
+            override fun onQueryTextChange(newText: String?): Boolean = false
+        })
+    }
+
+    private fun fetchWeatherByCity(city: String) {
+        if (Constants.isNetworkAvailable(this)) {
+            val retrofit = Retrofit.Builder()
+                .baseUrl(Constants.BASE_URL)
+                .addConverterFactory(GsonConverterFactory.create())
+                .build()
+
+            val serviceApi = retrofit.create(WeatherServiceApi::class.java)
+
+            val call = serviceApi.getWeatherByCity(
+                city,
+                Constants.APP_ID,
+                Constants.METRIC_UNIT
+            )
+
+            call.enqueue(object : Callback<WeatherResponse> {
+                override fun onResponse(call: Call<WeatherResponse>, response: Response<WeatherResponse>) {
+                    if (response.isSuccessful && response.body() != null) {
+                        updateUI(response.body()!!)
+                    } else {
+                        Toast.makeText(this@MainActivity, "City not found", Toast.LENGTH_SHORT).show()
+                    }
+                }
+
+                override fun onFailure(call: Call<WeatherResponse>, t: Throwable) {
+                    Toast.makeText(this@MainActivity, "Error: ${t.localizedMessage}", Toast.LENGTH_SHORT).show()
+                }
+            })
         } else {
-            Toast.makeText(this, "The permission was not granted", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "No internet connection", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun updateUI(weather: WeatherResponse) {
+        for (i in weather.weather.indices) {
+            findViewById<TextView>(R.id.text_view_sunset).text = convertTime(weather.sys.sunset.toLong())
+            findViewById<TextView>(R.id.text_view_sunrise).text = convertTime(weather.sys.sunrise.toLong())
+            findViewById<TextView>(R.id.text_view_status).text = weather.weather[i].description
+            findViewById<TextView>(R.id.text_view_address).text = weather.name
+            findViewById<TextView>(R.id.text_view_temp_max).text = "${weather.main.temp_max} max"
+            findViewById<TextView>(R.id.text_view_temp_min).text = "${weather.main.temp_min} min"
+            findViewById<TextView>(R.id.text_view_temp).text = "${weather.main.temp}°C"
+            findViewById<TextView>(R.id.text_view_humidity).text = "${weather.main.humidity}"
+            findViewById<TextView>(R.id.text_view_pressure).text = "${weather.main.pressure}"
+            findViewById<TextView>(R.id.text_view_wind).text = "${weather.wind.speed}"
         }
     }
 
     @SuppressLint("MissingPermission")
     private fun requestLocationData() {
-        val locationRequest = com.google.android.gms.location.LocationRequest.Builder(
+        val locationRequest = LocationRequest.Builder(
             Priority.PRIORITY_HIGH_ACCURACY, 1000
         ).build()
         mFusedLocationClient.requestLocationUpdates(locationRequest, object : LocationCallback() {
             override fun onLocationResult(locationResult: LocationResult) {
-
                 getLocationWeatherDetails(
                     locationResult.lastLocation?.latitude!!,
                     locationResult.lastLocation?.longitude!!
@@ -99,42 +144,20 @@ class MainActivity : AppCompatActivity() {
             )
 
             call.enqueue(object : Callback<WeatherResponse> {
-                override fun onResponse(
-                    call: Call<WeatherResponse>,
-                    response: Response<WeatherResponse>
-                ) {
-                    if (response.isSuccessful) {
-                        val weather = response.body()
-                        for (i in weather.weather.indices) {
-                            findViewById<TextView>(R.id.text_view_sunset).text = convertTime(weather.sys.sunset.toLong())
-                            findViewById<TextView>(R.id.text_view_sunrise).text = convertTime(weather.sys.sunrise.toLong())
-                            findViewById<TextView>(R.id.text_view_status).text = weather.weather[i].description
-                            findViewById<TextView>(R.id.text_view_address).text = weather.name
-                            findViewById<TextView>(R.id.text_view_address).text = weather.name
-                            findViewById<TextView>(R.id.text_view_temp_max).text = weather.main.temp_max.toString() +" max"
-                            findViewById<TextView>(R.id.text_view_temp_min).text = weather.main.temp_max.toString() + " min"
-                            findViewById<TextView>(R.id.text_view_temp).text = weather.main.temp.toString() +"°C"
-                            findViewById<TextView>(R.id.text_view_humidity).text = weather.main.humidity.toString()
-                            findViewById<TextView>(R.id.text_view_pressure).text = weather.main.pressure.toString()
-                            findViewById<TextView>(R.id.text_view_wind).text = weather.wind.speed.toString()
-                        }
+                override fun onResponse(call: Call<WeatherResponse>, response: Response<WeatherResponse>) {
+                    if (response.isSuccessful && response.body() != null) {
+                        updateUI(response.body()!!)
                     } else {
-                        Toast.makeText(
-                            this@MainActivity,
-                            "Something went wrong",
-                            Toast.LENGTH_SHORT
-                        ).show()
+                        Toast.makeText(this@MainActivity, "Something went wrong", Toast.LENGTH_SHORT).show()
                     }
                 }
 
-                override fun onFailure(call: Call<WeatherResponse>?, t: Throwable?) {
-                    Toast.makeText(this@MainActivity, t.toString(), Toast.LENGTH_SHORT).show()
+                override fun onFailure(call: Call<WeatherResponse>, t: Throwable) {
+                    Toast.makeText(this@MainActivity, "Error: ${t.localizedMessage}", Toast.LENGTH_SHORT).show()
                 }
-
             })
-
         } else {
-            Toast.makeText(this, "There's no internet connection", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "No internet connection", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -151,7 +174,6 @@ class MainActivity : AppCompatActivity() {
                 || locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
     }
 
-
     private fun requestPermissions() {
         if (ActivityCompat.shouldShowRequestPermissionRationale(
                 this,
@@ -159,12 +181,6 @@ class MainActivity : AppCompatActivity() {
             )
         ) {
             showRequestDialog()
-        } else if (ActivityCompat.shouldShowRequestPermissionRationale(
-                this,
-                android.Manifest.permission.ACCESS_COARSE_LOCATION
-            )
-        ) {
-            showRequestDialog()//remember that this was changed!
         } else {
             ActivityCompat.requestPermissions(
                 this,
@@ -188,12 +204,10 @@ class MainActivity : AppCompatActivity() {
                 } catch (e: ActivityNotFoundException) {
                     e.printStackTrace()
                 }
-            }.setNegativeButton("CLOSE") { dialog, _ ->
-                dialog.cancel()
-            }.setTitle("Location permission needed")
-            .setMessage("This permission is needed for accessing the location.It can enabled under the Application Settings.")
+            }
+            .setNegativeButton("CLOSE") { dialog, _ -> dialog.cancel() }
+            .setTitle("Location permission needed")
+            .setMessage("This permission is needed to access location. Enable it from App Settings.")
             .show()
     }
-
-
 }
